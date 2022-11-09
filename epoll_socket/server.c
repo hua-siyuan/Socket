@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 
 #ifndef CONNECT_SIZE
@@ -20,6 +21,8 @@
 #define PORT 7777
 #define MAX_LINE 2048
 #define LISTENQ 20
+
+#define DATA_DIR "./data/"
 
 void setNonblocking(int sockfd)
 {
@@ -39,6 +42,61 @@ void setNonblocking(int sockfd)
     }//if
 }
 
+void handle_request(char cmd[MAX_LINE], char buf[MAX_LINE])
+{
+	if (!strncmp(cmd, "touch", strlen("touch")))
+	{
+		char filename[MAX_LINE] = DATA_DIR;
+		strcat(filename, cmd + strlen("touch"));
+
+		FILE * fp = fopen(filename, "w");
+		if (fp == NULL)
+		{
+			perror("Error occur when creating file");
+			strcpy(buf, "fail");
+		}
+		fclose(fp);
+
+		strcpy(buf, "success");
+	}
+	else if (!strncmp(cmd, "ls", strlen("ls")))
+	{
+		DIR *d;
+		struct dirent *dir;
+		*buf = 0;
+		d = opendir(DATA_DIR);
+		if (d) {
+			while ((dir = readdir(d)) != NULL) {
+				if (strcmp(dir->d_name, ".") && strcmp(dir->d_name, ".."))
+				{
+					strcat(buf, dir->d_name);
+				}
+			}
+			closedir(d);
+		}
+		else
+		{
+			strcpy(buf, "fail");
+		}
+	}
+	else if (!strncmp(cmd, "rm", strlen("rm")))
+	{
+		char filename[MAX_LINE] = DATA_DIR;
+		strcat(filename, cmd + strlen("rm"));
+		if (unlink(filename))
+		{
+			perror("Error occur when delete file");
+			strcpy(buf, "fail");
+		}
+		else
+		{
+			strcpy(buf, "success");
+		}
+	}
+	char end[MAX_LINE] = {3, 0};
+	strcat(buf, end);
+}
+
 int main(int argc , char **argv)
 {
 	int i, listenfd, connfd, sockfd, epfd, nfds;
@@ -46,6 +104,7 @@ int main(int argc , char **argv)
 	ssize_t n, ret;
 		
 	char buf[MAX_LINE];
+	char resp[MAX_LINE];
 
 	socklen_t clilen;
 
@@ -136,7 +195,8 @@ int main(int argc , char **argv)
 			{
 				if((sockfd = events[i].data.fd) < 0)
 				continue;
-				if((ret = write(sockfd , buf , n)) != n)	
+				handle_request(buf, resp);
+				if((ret = write(sockfd , resp , strlen(resp))) != strlen(resp))	
 				{
 					printf("error writing to the sockfd!\n");
 					break;
